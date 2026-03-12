@@ -281,18 +281,18 @@ def compute_analysis(data, user_profile):
     if deposit_source == "שכיר":
         if premium_waiver and premium_waiver > 0:
             insured_deposit = premium_waiver / 0.94
-            row_rates = []
+            total_salary = 0
+            total_deposits = 0
             for d in all_deps:
                 sal = d.get("salary", 0) or 0
                 tot = d.get("total", 0) or 0
-                if sal > 500 and tot > 50:
+                if sal > 0 and tot > 0:
                     r = tot / sal
                     if 0.10 < r < 0.30:
-                        row_rates.append(r)
-            if row_rates:
-                row_rates.sort()
-                mid = len(row_rates) // 2
-                deposit_rate = row_rates[mid] if len(row_rates) % 2 == 1 else (row_rates[mid - 1] + row_rates[mid]) / 2
+                        total_salary += sal
+                        total_deposits += tot
+            if total_salary > 0:
+                deposit_rate = total_deposits / total_salary
                 insured_income = insured_deposit / deposit_rate
                 analysis["insured_income"] = round(insured_income)
                 analysis["insured_deposit"] = round(insured_deposit)
