@@ -5,7 +5,13 @@ Shared logic between streamlit-app/app.py and whatsapp-bot/main.py.
 """
 
 import math
+import re
 from datetime import datetime, date
+
+
+def sentences_to_lines(text: str) -> str:
+    """הופך כל משפט (נקודה+רווח) לשורה חדשה. מדלג על מספרים עשרוניים."""
+    return re.sub(r'\. (?!\d)', '.\n', text)
 
 
 # ─── System Prompt ───

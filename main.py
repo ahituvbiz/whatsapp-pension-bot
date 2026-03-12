@@ -28,6 +28,7 @@ from core.pension_core import (
     EQUITY_TRACKS, MADEDEI_WARNING_FUNDS,
     find_fund_key, is_equity_track, is_age_related_track,
     GOV_EMPLOYERS, is_gov_employer,
+    sentences_to_lines,
 )
 
 app = Flask(__name__)
@@ -181,7 +182,7 @@ def build_insurance_text(data, analysis, user_profile):
         lines.append(f"הקרן מבטיחה {sw} קצבה של ₪{sv} לכל החיים.")
         lines.append(f"בנוסף ₪{ov}/חודש עד שהילד הקטן יגיע ל-21. סה\"כ: ₪{format_number(tot)}.")
         lines.append(f"במקרה נכות 75%+: קצבה חודשית של ₪{dv}.")
-    return "\n".join(lines) or "לא נמצאו נתוני כיסויים בדוח."
+    return sentences_to_lines("\n".join(lines)) or "לא נמצאו נתוני כיסויים בדוח."
 
 
 def build_deposit_text(data, analysis, user_profile):
@@ -237,7 +238,7 @@ def build_deposit_text(data, analysis, user_profile):
     dr = analysis.get("deposit_rate", 0)
     if analysis.get("can_calc_income") and deposit_source == "שכיר" and dr < 18.48:
         lines.append(f"\n⚠️ {g(gender,'שים','שימי')} לב, שיעור ההפקדות נראה נמוך מהמינימום לפי חוק.")
-    return "\n".join(lines) or "אין נתוני הפקדות להצגה."
+    return sentences_to_lines("\n".join(lines)) or "אין נתוני הפקדות להצגה."
 
 
 def build_fee_text(data, analysis, user_profile):
@@ -284,7 +285,7 @@ def build_fee_text(data, analysis, user_profile):
         ac = get_movement_value(data.get("movements", []), "אקטוארי")
         lines.append(f"\n⚠️ {g(gender,'שים','שימי')} לב — נוכה ₪{format_number(round(ac))} בגלל הגרעון האקטוארי של מנורה.")
         lines.append(f"{g(gender,'שקול','שיקלי')} לעבור לקרן פנסיה אחרת.")
-    return "\n".join(lines)
+    return sentences_to_lines("\n".join(lines))
 
 
 def build_investment_text(data, analysis, user_profile):
@@ -297,7 +298,7 @@ def build_investment_text(data, analysis, user_profile):
         lines.append(f"  • {t.get('track_name','')} — {t.get('return_rate','')}")
     age = analysis.get("estimated_age")
     if not age:
-        return "\n".join(lines)
+        return sentences_to_lines("\n".join(lines))
     fk = find_fund_key(analysis.get("fund_name", ""))
     mult = 196 if gender == "גבר" else 194
     names = [t.get("track_name","") for t in tracks]
@@ -338,7 +339,7 @@ def build_investment_text(data, analysis, user_profile):
             "זה יפגע בפנסיה העתידית שלך. "
             "אני ממליץ שתשקול ברצינות לשנות מסלול השקעה."
         )
-    return "\n".join(lines)
+    return sentences_to_lines("\n".join(lines))
 
 
 def analyze_pdf(pdf_bytes: bytes, user_profile: dict):
@@ -377,6 +378,8 @@ def analyze_pdf(pdf_bytes: bytes, user_profile: dict):
     gender = user_profile.get("gender", "גבר")
     if is_gov_employer(employer):
         sections["_gov_note"] = f"💡 החשב הכללי מעודד עובדי מדינה לקחת ייעוץ פנסיוני עם סבסוד של 600 ש\"ח. {g(gender,'נצל','נצלי')} את ההטבה!"
+    # הקצבה הצפויה (הנתון הראשון בטבלא א) — לטקסט הפתיחה
+    sections["_pension_at_67"] = analysis.get("pension_at_67", 0) or 0
     return sections, None
 
 
@@ -585,6 +588,17 @@ def webhook():
         session["analysis"]     = sections
         session["topics_read"]  = []
         session["state"]        = "results_menu"
+
+        # שלח הקדמה לפני התפריט
+        pension_val = sections.get("_pension_at_67", 0)
+        if pension_val:
+            intro = (
+                f"לפני שנתחיל אני רוצה לענות על השאלה הכי נפוצה – "
+                f"₪{format_number(pension_val)} זו לגמרי לא הפנסיה שצפויה לך.\n"
+                f"הנתון הזה חושב בהנחה שלא תעבוד יותר עד גיל 67 ושהתשואה תהיה כ4%.\n"
+                f"מכיוון שזה תרחיש לא סביר, המספר הזה חסר משמעות. תתעלם ממנו!"
+            )
+            send_wa(from_num, to_num, intro)
 
         # שלח תפריט
         unread = [k for k in TOPIC_KEYS if k not in session["topics_read"]]
