@@ -106,9 +106,15 @@ def consent_expired(session: dict) -> bool:
 
 # ─── Twilio helpers ───
 
+EQUITY_IMAGE_URL = "https://ahituvbiz.github.io/robjectivi-landing/madedei_maniut.png"
+
 def send_wa(to: str, from_: str, body: str):
     client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
     client.messages.create(body=body, from_=from_, to=to)
+
+def send_wa_media(to: str, from_: str, media_url: str):
+    client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    client.messages.create(media_url=[media_url], from_=from_, to=to)
 
 
 def download_twilio_media(media_url: str) -> bytes | None:
@@ -296,11 +302,13 @@ def build_investment_text(data, analysis, user_profile):
     mult = 196 if gender == "גבר" else 194
     names = [t.get("track_name","") for t in tracks]
     eq, neq, sp500, madedei, halacha, age_track = [], [], False, False, False, False
+    cash_tracks = []
     for n in names:
         nl = n.lower()
         if "s&p" in nl or "500" in nl: sp500 = True
         if "מדדי מניות" in n: madedei = True
         if "הלכה" in n: halacha = True
+        if "כספי" in n or "שקלי" in n: cash_tracks.append(n)
         if fk and is_equity_track(n, fk): eq.append(n)
         else: neq.append(n)
         if is_age_related_track(n): age_track = True
@@ -324,6 +332,12 @@ def build_investment_text(data, analysis, user_profile):
         lines.append(f"\n⚠️ מסלול הלכה בקרן שלך — חשיפה לא מקסימלית. {g(gender,'שקול','שיקלי')} לעבור למסלול הלכה מנייתי.")
     if age <= 52 and fk and EQUITY_TRACKS[fk]["recommendation"]:
         lines.append(f"\n🤖 המסלול המומלץ בקרן שלך:\n{EQUITY_TRACKS[fk]['recommendation']}")
+    for ct in cash_tracks:
+        lines.append(
+            f"\n⚠️ מסלול {ct} שלך הוא ללא שום חשיפה למניות. "
+            "זה יפגע בפנסיה העתידית שלך. "
+            "אני ממליץ שתשקול ברצינות לשנות מסלול השקעה."
+        )
     return "\n".join(lines)
 
 
@@ -341,7 +355,17 @@ def analyze_pdf(pdf_bytes: bytes, user_profile: dict):
         "insurance":  {"title": "🛡️ כיסויים ביטוחיים", "text": build_insurance_text(data, analysis, user_profile)},
         "deposits":   {"title": "💰 הפקדות",             "text": build_deposit_text(data, analysis, user_profile)},
         "fees":       {"title": "🏷️ דמי ניהול",          "text": build_fee_text(data, analysis, user_profile)},
-        "investment": {"title": "📈 מסלול השקעה",         "text": build_investment_text(data, analysis, user_profile)},
+        "investment": {
+            "title": "📈 מסלול השקעה",
+            "text": build_investment_text(data, analysis, user_profile),
+            "show_equity_image": any(
+                ("s&p" in t.get("track_name", "").lower() or
+                 "500" in t.get("track_name", "").lower() or
+                 "מדדי מניות" in t.get("track_name", "") or
+                 "עוקב מדדי מניות" in t.get("track_name", ""))
+                for t in data.get("investment_tracks", [])
+            ),
+        },
     }
     # עובד מדינה?
     employer = data.get("header", {}).get("employer", "")
@@ -587,6 +611,10 @@ def webhook():
         text  = sec.get("text", "")
         resp.message(f"{title}\n\n{text}")
 
+        # תמונת מדדי מניות / S&P 500
+        if key == "investment" and sec.get("show_equity_image"):
+            send_wa_media(from_num, to_num, EQUITY_IMAGE_URL)
+
         # הערת עובד מדינה
         gov = session["analysis"].get("_gov_note")
         if gov and key == "investment":
@@ -637,6 +665,10 @@ def webhook():
         title = sec.get("title", "")
         text  = sec.get("text", "")
         resp.message(f"{title}\n\n{text}")
+
+        # תמונת מדדי מניות / S&P 500
+        if key == "investment" and sec.get("show_equity_image"):
+            send_wa_media(from_num, to_num, EQUITY_IMAGE_URL)
 
         # עובד מדינה
         gov = session["analysis"].get("_gov_note")
